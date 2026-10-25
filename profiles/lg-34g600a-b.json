@@ -1,0 +1,31 @@
+{
+  "name": "LG UltraGear 34G600A-B",
+  "notes": "Mapped on one unit in October 2026. This LG mostly ignores the standard input command (0x60), so inputs use LG's own (0xF4 from address 0x50). FPS and Gamer 1 were confirmed on screen; the other picture-mode codes follow from the menu order. Black Stabilizer reads back as the menu value but is written as the step number 0-20, and Reader and HDR Effect lock it. The DisplayPort input code has not been tested.",
+  "inputs": {
+    "vcp": "0xF4",
+    "method": "lg",
+    "options": [
+      {"label": "HDMI 1", "port": "HDMI 1", "value": "0x90"},
+      {"label": "HDMI 2", "port": "HDMI 2", "value": "0x91"},
+      {"label": "DisplayPort", "port": "DP", "value": "0xD0"}
+    ]
+  },
+  "presets": {
+    "vcp": "0x15",
+    "options": [
+      {"label": "Gamer 1", "value": 45},
+      {"label": "Gamer 2", "value": 46},
+      {"label": "FPS", "value": 30},
+      {"label": "RTS", "value": 31},
+      {"label": "Vivid", "value": 49},
+      {"label": "Reader", "value": 1},
+      {"label": "HDR Effect", "value": 39}
+    ]
+  },
+  "sliders": [
+    {"id": "brightness", "label": "Brightness", "vcp": "0x10", "min": 0, "max": 100, "step": 1},
+    {"id": "contrast", "label": "Contrast", "vcp": "0x12", "min": 0, "max": 100, "step": 1},
+    {"id": "black", "label": "Black Stabilizer", "vcp": "0xF9", "min": 0, "max": 100, "step": 5,
+     "write": "step", "locked_in_presets": [1, 39]}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Generic DDC/CI monitor",
+  "notes": "Standard MCCS codes most monitors accept. Input values vary by maker; check yours with the mapping steps in the README.",
+  "inputs": {
+    "vcp": "0x60",
+    "method": "standard",
+    "options": [
+      {"label": "HDMI 1", "port": "HDMI 1", "value": "0x11"},
+      {"label": "HDMI 2", "port": "HDMI 2", "value": "0x12"},
+      {"label": "DisplayPort", "port": "DP", "value": "0x0F"}
+    ]
+  },
+  "presets": null,
+  "sliders": [
+    {"id": "brightness", "label": "Brightness", "vcp": "0x10", "min": 0, "max": 100, "step": 1},
+    {"id": "contrast", "label": "Contrast", "vcp": "0x12", "min": 0, "max": 100, "step": 1}
+  ]
+}

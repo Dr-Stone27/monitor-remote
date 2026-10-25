@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Monitor">
+<meta name="theme-color" content="#0e0f12">
+<title>Monitor</title>
+<style>
+  :root {
+    --bg: #0e0f12; --panel: #17191e; --line: #262a31; --text: #eef0f3;
+    --muted: #8a919c; --accent: #e8344e; --accent-text: #fff;
+    --ok: #3ccf8e; --warn: #f2b33d; --err: #ff5a6a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  main { max-width: 480px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+  #status {
+    display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+    max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  #status.busy #dot { background: var(--warn); animation: pulse .8s ease-in-out infinite; }
+  #status.ok #dot { background: var(--ok); }
+  #status.ok { color: var(--text); }
+  #status.warn #dot { background: var(--warn); }
+  #status.err #dot { background: var(--err); }
+  #status.err { color: var(--err); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+  section[hidden] { display: none; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px; }
+  .grid { display: grid; gap: 8px; }
+  .inputs { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+  .presets { grid-template-columns: repeat(2, 1fr); }
+  button {
+    font: inherit; color: var(--text); background: #20232a; border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 8px; min-height: 52px; cursor: pointer; position: relative;
+  }
+  button small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+  button:active { background: #2a2e36; }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.on small { color: rgba(255,255,255,.8); }
+  button.pending { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) inset; animation: pulse .8s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .slider { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 6px 0; }
+  .slider input { grid-column: 1 / -1; }
+  .slider .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; margin: 2px 0 0; }
+  input[type=range]:disabled { opacity: .35; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Monitor</h1><div id="status"><span id="dot"></span><span id="status-text">Connecting…</span></div></header>
+
+  <section id="inputs-section" hidden>
+    <h2>Input</h2>
+    <div class="grid inputs" id="inputs"></div>
+  </section>
+
+  <section id="presets-section" hidden>
+    <h2>Picture mode</h2>
+    <div class="grid presets" id="presets"></div>
+  </section>
+
+  <section id="sliders-section" hidden>
+    <h2>Adjust current mode</h2>
+    <div id="sliders"></div>
+  </section>
+</main>
+
+<script>
+const CONFIG = __CONFIG__;
+const base = location.pathname.replace(/\/$/, "");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+const inputsEl = document.getElementById("inputs");
+const presetsEl = document.getElementById("presets");
+const presetName = Object.fromEntries(CONFIG.presets.map(p => [p.value, p.label]));
+const SLIDERS = Object.fromEntries(CONFIG.sliders.map(s => [s.id, s]));
+
+// Every action gets a number; a reply that isn't for the latest action is ignored,
+// so a slow answer can never overwrite a newer tap
+let seq = 0;
+let quietUntil = 0;
+
+function say(kind, text) {
+  statusEl.className = kind;
+  statusText.textContent = text;
+}
+
+function mark(container, value) {
+  for (const b of container.children) {
+    b.classList.remove("pending");
+    b.classList.toggle("on", Number(b.dataset.value) === value);
+  }
+}
+
+function clearPending() {
+  document.querySelectorAll(".pending").forEach(b => b.classList.remove("pending"));
+}
+
+function apply(s) {
+  if (s.preset !== null && s.preset !== undefined) mark(presetsEl, s.preset);
+  for (const [id, cfg] of Object.entries(SLIDERS)) {
+    const el = document.getElementById("s-" + id), out = document.getElementById("s-" + id + "-v");
+    if (s[id] !== null && s[id] !== undefined) {
+      el.value = s[id];
+      out.textContent = s[id];
+    }
+    // Some picture modes don't let a setting change
+    const locked = cfg.locked_in_presets.includes(s.preset);
+    el.disabled = locked;
+    if (locked) out.textContent = "Locked in this mode";
+  }
+}
+
+async function send(what, value, label, btn) {
+  const mine = ++seq;
+  quietUntil = Date.now() + 10000;
+  clearPending();
+  if (btn) btn.classList.add("pending");
+  say("busy", `Switching to ${label}…`);
+  try {
+    const r = await fetch(base + "/set", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({what, value})
+    });
+    const j = await r.json();
+    if (mine !== seq) return;
+    quietUntil = Date.now() + 2000;
+    if (!j.ok) {
+      clearPending();
+      return j.error === "busy" ? say("warn", "Busy, tap again") : say("err", "Monitor didn't answer");
+    }
+    apply(j.state);
+    if (what === "input") {
+      mark(inputsEl, value);
+      say("ok", `Sent to ${label}`);
+    } else if (j.confirmed) {
+      say("ok", `${label} ✓`);
+    } else {
+      clearPending();
+      const now = what === "preset" ? presetName[j.state.preset] : j.state[what];
+      say("warn", `Sent, monitor still shows ${now ?? "?"}`);
+    }
+  } catch (e) {
+    if (mine === seq) { clearPending(); say("err", "Mac not reachable"); }
+  }
+}
+
+if (CONFIG.inputs.length) document.getElementById("inputs-section").hidden = false;
+for (const i of CONFIG.inputs) {
+  const b = document.createElement("button");
+  b.dataset.value = i.value;
+  b.textContent = i.label;
+  if (i.port && i.port !== i.label) {
+    const small = document.createElement("small");
+    small.textContent = i.port;
+    b.appendChild(small);
+  }
+  // Monitors often misreport their current input, so highlight the last one tapped
+  b.onclick = () => send("input", i.value, i.label, b);
+  inputsEl.appendChild(b);
+}
+
+if (CONFIG.presets.length) document.getElementById("presets-section").hidden = false;
+for (const p of CONFIG.presets) {
+  const b = document.createElement("button");
+  b.dataset.value = p.value;
+  b.textContent = p.label;
+  b.onclick = () => send("preset", p.value, p.label, b);
+  presetsEl.appendChild(b);
+}
+
+// While dragging, values stream to the monitor with one request in flight at a time;
+// whatever arrived meanwhile is sent next, so it keeps up without queueing a backlog.
+// Letting go sends the final value with the usual double-check.
+if (CONFIG.sliders.length) document.getElementById("sliders-section").hidden = false;
+for (const cfg of CONFIG.sliders) {
+  const row = document.createElement("label");
+  row.className = "slider";
+  const name = document.createElement("span");
+  name.textContent = cfg.label;
+  const out = document.createElement("span");
+  out.className = "v";
+  out.id = "s-" + cfg.id + "-v";
+  out.textContent = "–";
+  const el = document.createElement("input");
+  Object.assign(el, {type: "range", id: "s-" + cfg.id, min: cfg.min, max: cfg.max, step: cfg.step});
+  row.append(name, out, el);
+  document.getElementById("sliders").appendChild(row);
+
+  let inflight = null, next = null;
+  function stream(v) {
+    if (inflight) { next = v; return; }
+    inflight = fetch(base + "/set", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({what: cfg.id, value: v, live: true})
+    }).catch(() => {}).finally(() => {
+      inflight = null;
+      if (next !== null && next !== v) { const n = next; next = null; stream(n); }
+      else next = null;
+    });
+  }
+
+  el.oninput = () => {
+    out.textContent = el.value;
+    quietUntil = Date.now() + 10000;
+    say("busy", `${cfg.label} ${el.value}…`);
+    stream(Number(el.value));
+  };
+  el.onchange = async () => {
+    next = null;
+    if (inflight) await inflight;
+    send(cfg.id, Number(el.value), `${cfg.label} ${el.value}`, null);
+  };
+}
+
+// Picks up changes made with the monitor's own buttons, but never while an action is in flight
+async function refresh() {
+  if (Date.now() < quietUntil) return;
+  const mine = seq;
+  try {
+    const s = await (await fetch(base + "/state")).json();
+    if (mine !== seq || Date.now() < quietUntil) return;
+    apply(s);
+    if (!statusEl.className || statusEl.className === "err") say("ok", "Connected");
+  } catch (e) {
+    if (mine === seq) say("err", "Mac not reachable");
+  }
+}
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 8000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Your own setup and secrets stay on your Mac
+config.json
+.token
+.monitor-id
+phone-link.txt
+access.log
+access.log.1
+server.out
+snapshots/
+
+# Built by install.sh
+ddc
+
+__pycache__/
+.DS_Store
