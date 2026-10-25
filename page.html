@@ -48,7 +48,10 @@
   button:active { background: #2a2e36; }
   button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   button.on small { color: rgba(255,255,255,.8); }
+  button.last { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
   button.pending { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) inset; animation: pulse .8s ease-in-out infinite; }
+  .note { font-size: 12px; color: var(--muted); margin: 10px 2px 0; }
+  .note:empty { display: none; }
   @keyframes pulse { 50% { opacity: .55; } }
   .slider { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 6px 0; }
   .slider input { grid-column: 1 / -1; }
@@ -64,6 +67,7 @@
   <section id="inputs-section" hidden>
     <h2>Input</h2>
     <div class="grid inputs" id="inputs"></div>
+    <p class="note" id="input-note"></p>
   </section>
 
   <section id="presets-section" hidden>
@@ -108,7 +112,23 @@ function clearPending() {
   document.querySelectorAll(".pending").forEach(b => b.classList.remove("pending"));
 }
 
+// The monitor can't say which input it's showing, so this marks the last one the remote
+// switched to, outlined rather than filled, with the time it was set
+function markLast(last) {
+  for (const b of inputsEl.children) {
+    b.classList.remove("pending");
+    b.classList.toggle("last", Number(b.dataset.value) === last.value);
+  }
+  const label = CONFIG.inputs.find(i => i.value === last.value)?.label ?? "?";
+  const at = new Date(last.at * 1000);
+  const time = at.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  const day = at.toDateString() === new Date().toDateString() ? "" : at.toLocaleDateString([], {weekday: "short"}) + " ";
+  document.getElementById("input-note").textContent =
+    `Last set from here: ${label}, ${day}${time}. Switching on the monitor itself won't show.`;
+}
+
 function apply(s) {
+  if (s.last_input) markLast(s.last_input);
   if (s.preset !== null && s.preset !== undefined) mark(presetsEl, s.preset);
   for (const [id, cfg] of Object.entries(SLIDERS)) {
     const el = document.getElementById("s-" + id), out = document.getElementById("s-" + id + "-v");
@@ -143,7 +163,6 @@ async function send(what, value, label, btn) {
     }
     apply(j.state);
     if (what === "input") {
-      mark(inputsEl, value);
       say("ok", `Sent to ${label}`);
     } else if (j.confirmed) {
       say("ok", `${label} ✓`);
@@ -167,7 +186,6 @@ for (const i of CONFIG.inputs) {
     small.textContent = i.port;
     b.appendChild(small);
   }
-  // Monitors often misreport their current input, so highlight the last one tapped
   b.onclick = () => send("input", i.value, i.label, b);
   inputsEl.appendChild(b);
 }

@@ -75,9 +75,28 @@ def read(*codes):
     return [int(line.split()[0]) if line[:1].isdigit() else None for line in lines] + [None] * (len(codes) - len(lines))
 
 
+LAST_INPUT = HERE / ".last-input"
+
+
+def last_input():
+    # Monitors rarely report which input they're showing, so the remote remembers what it last switched to
+    try:
+        value, when = (int(x) for x in LAST_INPUT.read_text().split())
+    except (FileNotFoundError, ValueError):
+        return None
+    return {"value": value, "at": when} if INPUTS and value in ALLOWED["input"] else None
+
+
+def remember_input(value):
+    LAST_INPUT.write_text(f"{value} {int(time.time())}\n")
+    LAST_INPUT.chmod(0o600)
+
+
 def state():
     keys = (["preset"] if PRESETS else []) + list(SLIDERS)
-    return dict(zip(keys, read(*(VCP[k] for k in keys))))
+    s = dict(zip(keys, read(*(VCP[k] for k in keys))))
+    s["last_input"] = last_input()
+    return s
 
 
 def confirm(code, value, tries=5):
@@ -287,6 +306,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(502, json.dumps({"ok": False}))
             if live:
                 return self._send(200, json.dumps({"ok": True}))
+            if what == "input":
+                remember_input(value)
             # Monitors often misreport their current input, so an input switch isn't confirmed
             confirmed = None if what == "input" else confirm(VCP[what], value)
             self._send(200, json.dumps({"ok": True, "confirmed": confirmed, "state": state()}))

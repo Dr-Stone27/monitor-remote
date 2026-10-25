@@ -2,6 +2,7 @@
 config.json
 .token
 .monitor-id
+.last-input
 phone-link.txt
 access.log
 access.log.1

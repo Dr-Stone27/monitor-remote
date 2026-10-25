@@ -3,6 +3,7 @@
 //   ddc get <vcp> [<vcp>...]   current and max value per code, one line each (hex or decimal)
 //   ddc set <vcp> <value>      set a VCP code
 //   ddc set-alt <vcp> <value>  set via source address 0x50 (how LG monitors take input switches)
+//   ddc get-alt <vcp>...       read via source address 0x50
 //   ddc caps                   the monitor's capabilities string
 //
 // DDC_REPEAT=1..5 changes how many copies of each command are sent (default 2).
@@ -51,13 +52,17 @@ static int ddc_write(IOAVServiceRef sv, uint8_t addr, const uint8_t *payload, in
     return ddc_write_gap(sv, addr, payload, n, 10000);
 }
 
-static int ddc_get(IOAVServiceRef sv, uint8_t vcp, int *cur, int *max) {
+static int ddc_get_from(IOAVServiceRef sv, uint8_t addr, uint8_t vcp, int *cur, int *max) {
     for (int attempt = 0; attempt < 4; attempt++) {
         uint8_t p[2] = {0x01, vcp};
-        if (ddc_write(sv, HOST_ADDR, p, 2)) continue;
+        if (ddc_write(sv, addr, p, 2)) continue;
         usleep(50000);
         uint8_t r[12] = {0};
-        if (IOAVServiceReadI2C(sv, DDC_CHIP, HOST_ADDR, r, 12) != kIOReturnSuccess) continue;
+        if (IOAVServiceReadI2C(sv, DDC_CHIP, addr, r, 12) != kIOReturnSuccess) continue;
+        if (getenv("DDC_DEBUG")) {
+            for (int i = 0; i < 12; i++) fprintf(stderr, "%02X ", r[i]);
+            fprintf(stderr, "\n");
+        }
         // 6E 88 02 <result> <vcp> <type> <maxH> <maxL> <curH> <curL> <chk>
         if (r[2] != 0x02 || r[4] != vcp) continue;
         if (r[3] != 0x00) return 1;  // monitor says the code is unsupported
@@ -66,6 +71,10 @@ static int ddc_get(IOAVServiceRef sv, uint8_t vcp, int *cur, int *max) {
         return 0;
     }
     return -1;
+}
+
+static int ddc_get(IOAVServiceRef sv, uint8_t vcp, int *cur, int *max) {
+    return ddc_get_from(sv, HOST_ADDR, vcp, cur, max);
 }
 
 static int ddc_caps(IOAVServiceRef sv, char *out, int outlen) {
@@ -138,12 +147,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "no external monitor answered over DDC\n");
         return 1;
     }
-    if (!strcmp(argv[1], "get") && argc >= 3) {
+    if ((!strcmp(argv[1], "get") || !strcmp(argv[1], "get-alt")) && argc >= 3) {
         // Several codes in one run saves finding the monitor again for each
+        uint8_t addr = !strcmp(argv[1], "get-alt") ? 0x50 : HOST_ADDR;
         int failed = 0;
         for (int i = 2; i < argc; i++) {
             int cur, max;
-            int r = ddc_get(sv, (uint8_t)strtol(argv[i], NULL, 0), &cur, &max);
+            int r = ddc_get_from(sv, addr, (uint8_t)strtol(argv[i], NULL, 0), &cur, &max);
             if (r == 1) { printf("unsupported\n"); failed = 3; }
             else if (r) { printf("err\n"); failed = 1; }
             else printf("%d %d\n", cur, max);

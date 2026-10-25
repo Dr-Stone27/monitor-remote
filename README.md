@@ -4,7 +4,7 @@ Control your monitor from your phone instead of the joystick on the back. Switch
 
 Your Mac sends the commands down the display cable using DDC/CI, the control standard most monitors support. A small server on the Mac gives your phone one page of buttons and sliders. There's no app to install on the phone.
 
-- **Inputs:** one tap to switch between your Mac, consoles and other sources.
+- **Inputs:** one tap to switch between your Mac, consoles and other sources. Most monitors can't say which input they're showing, so the page outlines the last one the remote switched to, with the time.
 - **Picture modes:** one tap per mode, if your monitor exposes them.
 - **Sliders:** brightness, contrast and any other setting your monitor accepts. They update live as you drag.
 - **Confirmed changes:** the page shows a tick only once the monitor reports the new value back.
@@ -71,7 +71,9 @@ Manufacturers rarely publish their codes, so you find them by changing a setting
    - **If it still doesn't change,** try `./ddc set-alt <code> <value>`.
    - Some monitors ignore commands while their own menu is open.
 5. For picture modes and inputs, run `python3 tools.py watch <code>` and step through the options with the monitor's buttons. Each one prints its value.
-6. Add what you found to `config.json`, run `./install.sh`, and you're back up. Monitors often report their current input wrongly, so the page shows input switches as "Sent", without a tick.
+6. Add what you found to `config.json`, run `./install.sh`, and you're back up.
+
+Monitors often report their current input wrongly or not at all, so input switches show as "Sent" rather than with a tick. The page remembers the last input set from the remote instead. If a scan does find a code that follows the input on your monitor, please say so in an issue.
 
 If you map a monitor, please share it as a profile in `profiles/`. Note which values you confirmed on screen.
 
